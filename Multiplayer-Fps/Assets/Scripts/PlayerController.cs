@@ -1,12 +1,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using Photon.Pun;
 using Photon.Realtime;
 using Hashtable = ExitGames.Client.Photon.Hashtable;
 
-public class PlayerController : MonoBehaviourPunCallbacks
+public class PlayerController : MonoBehaviourPunCallbacks, IDamageable
 {
+    [SerializeField] Image healthbarImage;
+    [SerializeField] GameObject ui;
+
     [SerializeField] GameObject cameraHolder;
 
     [SerializeField] float mouseSensitivity, sprintSpeed, walkSpeed, jumpForce, smoothTime;
@@ -24,11 +28,18 @@ public class PlayerController : MonoBehaviourPunCallbacks
     Rigidbody rb;
     PhotonView PV;
 
+    const float maxHealth = 100f;
+    float currentHealth = maxHealth;
+
+    PlayerManager playerManager;
+
     void Awake()
     {
         Cursor.lockState = CursorLockMode.Locked;
         rb = GetComponent<Rigidbody>();
         PV = GetComponent<PhotonView>();
+
+        playerManager = PhotonView.Find((int)PV.InstantiationData[0]).GetComponent<PlayerManager>();
     }
 
     void Start()
@@ -41,6 +52,7 @@ public class PlayerController : MonoBehaviourPunCallbacks
         {
             Destroy(GetComponentInChildren<Camera>().gameObject);
             Destroy(rb);
+            Destroy(ui);
         }
     }
 
@@ -85,6 +97,16 @@ public class PlayerController : MonoBehaviourPunCallbacks
                 EquipItem(itemIndex - 1);
             }
         }
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            items[itemIndex].Use();
+        }
+
+        if (transform.position.y < -10f) // Die if you fall out of the world
+        {
+            Die();
+        }
     }
 
     void FixedUpdate()
@@ -116,7 +138,6 @@ public class PlayerController : MonoBehaviourPunCallbacks
     {
         if (Input.GetKeyDown(KeyCode.Space) && grounded)
         {
-            Debug.Log("jump");
             rb.AddForce(transform.up * jumpForce);
         }
     }
@@ -157,5 +178,31 @@ public class PlayerController : MonoBehaviourPunCallbacks
     public void SetGroundedState(bool _grounded)
     {
         grounded = _grounded;
+    }
+
+    public void TakeDamage(float damage)
+    {
+        PV.RPC("RPC_TakeDamage", RpcTarget.All, damage);
+    }
+
+    [PunRPC]
+    void RPC_TakeDamage(float damage)
+    {
+        if (!PV.IsMine)
+            return;
+
+        currentHealth -= damage;
+
+        healthbarImage.fillAmount = currentHealth / maxHealth;
+
+        if (currentHealth <= 0)
+        {
+            Die();
+        }
+    }
+
+    void Die()
+    {
+        playerManager.Die();
     }
 }
